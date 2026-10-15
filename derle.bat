@@ -2,13 +2,15 @@
 setlocal
 rem ==========================================================
 rem  UGS Ofset Kalibrasyonu eklentisi - otomatik derleme
-rem  Gerekenler: JDK 17+ ve Git (Maven gerekmez, mvnw indirir)
+rem  Gereken: JDK 17+  (Git ve Maven gerekmez)
 rem  Cikti: bu klasore ugs-platform-plugin-ofset-*.nbm
 rem ==========================================================
 
 set "PROJE=%~dp0"
 set "SRC=%PROJE%ugs-src"
-set "UGS_ETIKET=v2.1.26"
+set "UGS_SURUM=2.1.26"
+set "ZIP=%PROJE%ugs-kaynak.zip"
+set "ZIP_URL=https://github.com/winder/Universal-G-Code-Sender/archive/refs/tags/v%UGS_SURUM%.zip"
 
 echo.
 echo === 1/5 Arac kontrolu ===
@@ -19,21 +21,37 @@ if errorlevel 1 (
     goto :hata
 )
 java -version
-where git >nul 2>&1
-if errorlevel 1 (
-    echo [HATA] Git bulunamadi. Kur: https://git-scm.com
-    goto :hata
-)
 
 echo.
-echo === 2/5 UGS %UGS_ETIKET% kaynak kodu ===
+echo === 2/5 UGS v%UGS_SURUM% kaynak kodu ===
 if exist "%SRC%\pom.xml" (
     echo Kaynak kod zaten var, indirme atlandi.
-) else (
-    git clone --depth 1 --branch %UGS_ETIKET% https://github.com/winder/Universal-G-Code-Sender.git "%SRC%"
-    if errorlevel 1 goto :hata
+    goto :kopyala
 )
 
+where git >nul 2>&1
+if not errorlevel 1 (
+    echo Git ile indiriliyor...
+    git clone --depth 1 --branch v%UGS_SURUM% https://github.com/winder/Universal-G-Code-Sender.git "%SRC%"
+    if errorlevel 1 goto :hata
+    goto :kopyala
+)
+
+echo Git yok, zip olarak indiriliyor (yaklasik 60 MB)...
+powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%ZIP_URL%' -OutFile '%ZIP%'"
+if errorlevel 1 goto :hata
+if not exist "%ZIP%" goto :hata
+
+echo Zip aciliyor...
+if exist "%PROJE%ugs-gecici" rmdir /S /Q "%PROJE%ugs-gecici"
+powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; Expand-Archive -Path '%ZIP%' -DestinationPath '%PROJE%ugs-gecici' -Force"
+if errorlevel 1 goto :hata
+move "%PROJE%ugs-gecici\Universal-G-Code-Sender-%UGS_SURUM%" "%SRC%" >nul
+if errorlevel 1 goto :hata
+rmdir /S /Q "%PROJE%ugs-gecici"
+del /Q "%ZIP%"
+
+:kopyala
 echo.
 echo === 3/5 Eklenti dosyalari kopyalaniyor ===
 xcopy /E /I /Y "%PROJE%ugs-platform-plugin-ofset" "%SRC%\ugs-platform\ugs-platform-plugin-ofset" >nul
