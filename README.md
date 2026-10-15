@@ -29,7 +29,7 @@ ugs-platform-plugin-ofset/
 
 ## Kolay derleme (Windows)
 
-Gereken: JDK 17+ ve Git. Maven gerekmez (UGS'nin `mvnw` aracı indirir).
+Gereken: sadece JDK 17+. Git yoksa UGS kaynağı zip olarak iner; Maven'ı UGS'nin `mvnw` aracı indirir.
 
 `derle.bat` dosyasına çift tıkla. Betik UGS v2.1.26 kaynağını `ugs-src` klasörüne indirir,
 eklentiyi içine kopyalar, derler ve `.nbm` dosyasını bu klasöre bırakır.
