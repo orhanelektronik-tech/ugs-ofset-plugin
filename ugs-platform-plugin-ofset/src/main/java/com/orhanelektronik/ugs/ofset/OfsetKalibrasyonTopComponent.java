@@ -24,7 +24,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.prefs.Preferences;
 
 /**
- * Spindle ofset kalibrasyonu - delik problama yöntemi (lazer bölümü yok).
+ * Spindle XY ofset kalibrasyonu - delik problama yöntemi (lazer ve Z bölümü yok).
  *
  * Mantık:
  *   L    = Referans noktası (blok deliğinin merkezi) - ayarlarda SABİT girilir
@@ -65,8 +65,6 @@ public final class OfsetKalibrasyonTopComponent extends TopComponent implements 
     private final JTextField tfHizliF   = alan("hizliF", "100");
     private final JTextField tfYavasF   = alan("yavasF", "15");
     private final JTextField tfGeri     = alan("geriCekme", "0.5");
-    private final JTextField tfZArama   = alan("zArama", "10");
-    private final JTextField tfZPlaka   = alan("zPlaka", "0.0");
     private final JComboBox<String> cbHedef = new JComboBox<>(new String[]{"G54 (P1)", "G55 (P2)"});
     private final JCheckBox chSpindleModu = new JCheckBox("Uygularken spindle moduna geç ($32=0)");
 
@@ -82,7 +80,7 @@ public final class OfsetKalibrasyonTopComponent extends TopComponent implements 
 
     public OfsetKalibrasyonTopComponent() {
         setName("Ofset Kalibrasyonu");
-        setToolTipText("Spindle ofset kalibrasyonu (delik problama)");
+        setToolTipText("Spindle XY ofset kalibrasyonu (delik problama)");
         backend = CentralLookup.getDefault().lookup(BackendAPI.class);
 
         cbHedef.setSelectedIndex(prefs.getInt("hedef", 0));
@@ -111,8 +109,6 @@ public final class OfsetKalibrasyonTopComponent extends TopComponent implements 
         sira = ayarEkle(ayar, sira, "Hızlı prob F (mm/dk)", tfHizliF);
         sira = ayarEkle(ayar, sira, "Yavaş prob F (mm/dk)", tfYavasF);
         sira = ayarEkle(ayar, sira, "Geri çekme (mm)", tfGeri);
-        sira = ayarEkle(ayar, sira, "Z arama mesafesi (mm)", tfZArama);
-        sira = ayarEkle(ayar, sira, "Z plaka kalınlığı (mm)", tfZPlaka);
         sira = ayarEkle(ayar, sira, "Yazılacak koordinat", cbHedef);
 
         GridBagConstraints gc = new GridBagConstraints();
@@ -158,7 +154,6 @@ public final class OfsetKalibrasyonTopComponent extends TopComponent implements 
         // 4 - Uygula
         JPanel p4 = panel("4 - Ofseti uygula");
         p4.add(gorevButonu("Ofseti uygula", "Ofset uygula", this::ofsetUygula));
-        p4.add(gorevButonu("Z probla (PCB yüzeyi)", "Z problama", this::zProbla));
         p4.add(lblFark);
         ana.add(p4);
 
@@ -385,12 +380,7 @@ public final class OfsetKalibrasyonTopComponent extends TopComponent implements 
         Position p = probeBekle(geri * 2.0, yavas);
         gonder("G90");
 
-        double v;
-        switch (eksen) {
-            case 'X': v = p.getX(); break;
-            case 'Y': v = p.getY(); break;
-            default:  v = p.getZ(); break;
-        }
+        double v = (eksen == 'X') ? p.getX() : p.getY();
         log(String.format("  %c%s temas: %s", eksen, yon > 0 ? "+" : "-", f(v)));
         return v;
     }
@@ -413,7 +403,7 @@ public final class OfsetKalibrasyonTopComponent extends TopComponent implements 
     }
 
     // =====================================================================
-    //  ADIM 4 - OFSET UYGULA / Z
+    //  ADIM 4 - OFSET UYGULA
     // =====================================================================
     private void ofsetUygula() throws Exception {
         if (tfRefX.getText().trim().isEmpty() || tfRefY.getText().trim().isEmpty()) {
@@ -450,19 +440,6 @@ public final class OfsetKalibrasyonTopComponent extends TopComponent implements 
             log("Not: Delme G-code'unun başında G55 olmalı.");
         }
         etiketleriGuncelle();
-    }
-
-    private void zProbla() throws Exception {
-        double ara = sayi(tfZArama);
-        double plaka = sayi(tfZPlaka);
-        int p = cbHedef.getSelectedIndex() + 1;
-
-        gonder("G21");
-        double z = eksenProbla('Z', -1, ara);
-        gonder("G10 L20 P" + p + " Z" + f(plaka));
-        gonder("G91 G0 Z2");
-        gonder("G90");
-        log("Z sıfırlandı (temas Z" + f(z) + ", plaka " + f(plaka) + " mm).");
     }
 
     // =====================================================================
