@@ -1,2 +1,5 @@
 Manifest-Version: 1.0
 OpenIDE-Module-Localizing-Bundle: com/orhanelektronik/ugs/ofset/Bundle.properties
+OpenIDE-Module-Java-Dependencies: Java > 1.8
+OpenIDE-Module-Specification-Version: 1.0
+AutoUpdate-Essential-Module: false
