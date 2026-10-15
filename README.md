@@ -27,7 +27,14 @@ ugs-platform-plugin-ofset/
    └─ java/com/orhanelektronik/ugs/ofset/OfsetKalibrasyonTopComponent.java
 ```
 
-## Derleme
+## Kolay derleme (Windows)
+
+Gereken: JDK 17+ ve Git. Maven gerekmez (UGS'nin `mvnw` aracı indirir).
+
+`derle.bat` dosyasına çift tıkla. Betik UGS v2.1.26 kaynağını `ugs-src` klasörüne indirir,
+eklentiyi içine kopyalar, derler ve `.nbm` dosyasını bu klasöre bırakır.
+
+## Elle derleme
 
 Gereken: JDK 17, Maven, Git
 
