@@ -1,6 +1,6 @@
 # UGS Ofset Kalibrasyonu Eklentisi
 
-UGS (Universal Gcode Sender) 2.1.26 için spindle ofset kalibrasyon eklentisi.
+UGS (Universal Gcode Sender) 2.1.26 için spindle XY ofset kalibrasyon eklentisi.
 Lazer sökülüp spindle takıldığında oluşan, her seferinde farklı olan XY kaymasını
 tablaya sabitlenmiş metal blok üzerindeki **delik problama** (merkez bulma) ile düzeltir.
 Eklenti lazeri hiç açmaz; lazer tarafındaki referans noktası sabit bir değer olarak girilir.
@@ -73,4 +73,6 @@ merkezine getir, panelde **Mevcut konumu yaz**'a bas — ya da makine koordinat�
 2. Lazer takılıyken kartın G54 sıfırını ayarla, deseni yak.
 3. Lazeri sök, spindle tak, pense ölçülü pim tak. Blok probe pinine, krokodil pense/gövdeye.
 4. Pimi deliğin içine, yüzeyin 2–3 mm altına indir → **Delik problamayı başlat**
-5. **Ofseti uygula** (isteğe bağlı `$32=0` ile spindle moduna geçer) → pimi çıkar, matkabı tak → **Z probla** → delme kodunu gönder.
+5. **Ofseti uygula** (isteğe bağlı `$32=0` ile spindle moduna geçer) → pimi çıkar, matkabı tak → Z sıfırını her zamanki gibi ayarla → delme kodunu gönder.
+
+> Eklenti sadece XY ofsetini düzeltir; Z problama yapmaz.
