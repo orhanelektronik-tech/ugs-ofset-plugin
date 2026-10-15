@@ -24,13 +24,17 @@ import java.util.concurrent.TimeUnit;
 import java.util.prefs.Preferences;
 
 /**
- * Lazer / Spindle ofset kalibrasyonu - delik problama yöntemi.
+ * Spindle ofset kalibrasyonu - delik problama yöntemi (lazer bölümü yok).
  *
  * Mantık:
- *   L   = lazer noktası blok deliğinin merkezindeyken makine konumu
- *   S   = spindle pimi deliğin merkezindeyken makine konumu (probla bulunur)
- *   WCO = lazer referansı alınırken aktif olan iş koordinat ofseti (kartın G54 sıfırı)
- *   Yeni ofset = WCO + (S - L)  ->  G10 L2 P1/P2 ile yazılır
+ *   L    = Referans noktası (blok deliğinin merkezi) - ayarlarda SABİT girilir
+ *          (lazer işinde kullanılan koordinata karşılık gelen makine konumu)
+ *   S    = Spindle pimi deliğin merkezindeyken makine konumu (probla bulunur)
+ *   TABAN = Probla anında aktif olan iş koordinat ofseti (kartın G54 sıfırı)
+ *   Yeni ofset = TABAN + (S - L)  ->  G10 L2 P1/P2 ile yazılır
+ *
+ * Çift uygulama koruması: Ofset uygulandıktan sonra tekrar problanırsa TABAN
+ * olarak uygulanmış değer değil, ilk taban kullanılır.
  */
 @TopComponent.Description(
         preferredID = "OfsetKalibrasyonTopComponent",
@@ -47,6 +51,8 @@ public final class OfsetKalibrasyonTopComponent extends TopComponent implements 
         void calistir() throws Exception;
     }
 
+    private static final double ESIT_TOL = 0.0005;
+
     private final Preferences prefs = NbPreferences.forModule(OfsetKalibrasyonTopComponent.class);
     private final BackendAPI backend;
     private final BlockingQueue<Position> probeKuyrugu = new LinkedBlockingQueue<>();
@@ -59,13 +65,16 @@ public final class OfsetKalibrasyonTopComponent extends TopComponent implements 
     private final JTextField tfHizliF   = alan("hizliF", "100");
     private final JTextField tfYavasF   = alan("yavasF", "15");
     private final JTextField tfGeri     = alan("geriCekme", "0.5");
-    private final JTextField tfLazerS   = alan("lazerS", "5");
     private final JTextField tfZArama   = alan("zArama", "10");
     private final JTextField tfZPlaka   = alan("zPlaka", "0.0");
     private final JComboBox<String> cbHedef = new JComboBox<>(new String[]{"G54 (P1)", "G55 (P2)"});
+    private final JCheckBox chSpindleModu = new JCheckBox("Uygularken spindle moduna geç ($32=0)");
+
+    // ---- Referans (sabit) ----
+    private final JTextField tfRefX = alan("refX", "");
+    private final JTextField tfRefY = alan("refY", "");
 
     // ---- Durum etiketleri ----
-    private final JLabel lblLazer   = new JLabel();
     private final JLabel lblSpindle = new JLabel();
     private final JLabel lblFark    = new JLabel();
     private final JTextArea taLog   = new JTextArea(10, 50);
@@ -73,11 +82,13 @@ public final class OfsetKalibrasyonTopComponent extends TopComponent implements 
 
     public OfsetKalibrasyonTopComponent() {
         setName("Ofset Kalibrasyonu");
-        setToolTipText("Lazer / Spindle ofset kalibrasyonu (delik problama)");
+        setToolTipText("Spindle ofset kalibrasyonu (delik problama)");
         backend = CentralLookup.getDefault().lookup(BackendAPI.class);
 
         cbHedef.setSelectedIndex(prefs.getInt("hedef", 0));
         cbHedef.addActionListener(e -> prefs.putInt("hedef", cbHedef.getSelectedIndex()));
+        chSpindleModu.setSelected(prefs.getBoolean("spindleModu", true));
+        chSpindleModu.addActionListener(e -> prefs.putBoolean("spindleModu", chSpindleModu.isSelected()));
 
         arayuzuOlustur();
         etiketleriGuncelle();
@@ -99,13 +110,10 @@ public final class OfsetKalibrasyonTopComponent extends TopComponent implements 
         satir(ayar, "Hızlı prob F (mm/dk)", tfHizliF);
         satir(ayar, "Yavaş prob F (mm/dk)", tfYavasF);
         satir(ayar, "Geri çekme (mm)", tfGeri);
-        satir(ayar, "Lazer işaretçi gücü S", tfLazerS);
         satir(ayar, "Z arama mesafesi (mm)", tfZArama);
         satir(ayar, "Z plaka kalınlığı (mm)", tfZPlaka);
-        ayar.add(new JLabel("Yazılacak koordinat"));
-        ayar.add(cbHedef);
-        ayar.add(new JLabel());
-        ayar.add(new JLabel());
+        satir(ayar, "Yazılacak koordinat", cbHedef);
+        ayar.add(chSpindleModu);
         ana.add(ayar);
 
         // 1 - Hazırlık
@@ -117,16 +125,17 @@ public final class OfsetKalibrasyonTopComponent extends TopComponent implements 
         p1.add(durdur);
         ana.add(p1);
 
-        // 2 - Lazer referansı
-        JPanel p2 = panel("2 - Lazer referansı (lazer takılı, kart G54 sıfırı ayarlanmış)");
-        p2.add(gorevButonu("İşaretçi AÇ", "Lazer işaretçi aç", this::lazerIsaretciAc));
-        p2.add(gorevButonu("İşaretçi KAPAT", "Lazer işaretçi kapat", this::lazerIsaretciKapat));
-        p2.add(gorevButonu("Lazer referansını kaydet", "Lazer referansı", this::lazerReferansKaydet));
-        p2.add(lblLazer);
+        // 2 - Referans (sabit)
+        JPanel p2 = panel("2 - Referans noktası (blok deliği merkezi, makine koordinatı - bir kez girilir)");
+        p2.add(new JLabel("X"));
+        p2.add(tfRefX);
+        p2.add(new JLabel("Y"));
+        p2.add(tfRefY);
+        p2.add(gorevButonu("Mevcut konumu yaz", "Mevcut konumu referansa yaz", this::mevcutKonumuReferansaYaz));
         ana.add(p2);
 
-        // 3 - Spindle referansı
-        JPanel p3 = panel("3 - Spindle referansı (pim takılı, pim deliğin içinde, yüzeyin 2-3 mm altında)");
+        // 3 - Spindle problama
+        JPanel p3 = panel("3 - Spindle (pim takılı, pim deliğin içinde, yüzeyin 2-3 mm altında)");
         p3.add(gorevButonu("Delik problamayı başlat", "Delik problama", this::delikProbla));
         p3.add(lblSpindle);
         ana.add(p3);
@@ -223,34 +232,19 @@ public final class OfsetKalibrasyonTopComponent extends TopComponent implements 
     }
 
     // =====================================================================
-    //  ADIM 2 - LAZER
+    //  ADIM 2 - REFERANS
     // =====================================================================
-    private void lazerIsaretciAc() throws Exception {
-        gonder("$32=0");
-        gonder("M3 S" + f(sayi(tfLazerS)));
-        log("DİKKAT: Lazer AÇIK - koruyucu gözlük tak!");
-        log("Jog ile lazer noktasını blok deliğinin tam merkezine getir.");
-    }
-
-    private void lazerIsaretciKapat() throws Exception {
-        gonder("M5");
-        gonder("$32=1");
-    }
-
-    private void lazerReferansKaydet() throws Exception {
+    private void mevcutKonumuReferansaYaz() {
         Position m = makinePoz();
-        Position w = isPoz();
-        double wcoX = m.getX() - w.getX();
-        double wcoY = m.getY() - w.getY();
-
-        prefs.putDouble("lx", m.getX());
-        prefs.putDouble("ly", m.getY());
-        prefs.putDouble("wcoX", wcoX);
-        prefs.putDouble("wcoY", wcoY);
-
-        log("Lazer referansı L = X" + f(m.getX()) + " Y" + f(m.getY()));
-        log("Kartın iş ofseti (WCO) = X" + f(wcoX) + " Y" + f(wcoY));
-        lazerIsaretciKapat();
+        String x = f(m.getX());
+        String y = f(m.getY());
+        prefs.put("refX", x);
+        prefs.put("refY", y);
+        SwingUtilities.invokeLater(() -> {
+            tfRefX.setText(x);
+            tfRefY.setText(y);
+        });
+        log("Referans = X" + x + " Y" + y + " (makine koordinatı)");
         etiketleriGuncelle();
     }
 
@@ -264,6 +258,9 @@ public final class OfsetKalibrasyonTopComponent extends TopComponent implements 
             throw new Exception("Pim çapı delik çapından küçük olmalı.");
         }
         double maxMesafe = delik / 2.0 + 2.0;
+
+        // Taban iş ofsetini al (çift uygulama korumalı)
+        tabanOfsetiKaydet();
 
         gonder("G21");
         gonder("G90");
@@ -304,8 +301,35 @@ public final class OfsetKalibrasyonTopComponent extends TopComponent implements 
 
         prefs.putDouble("sx", cx);
         prefs.putDouble("sy", cy);
-        log("Spindle referansı S = X" + f(cx) + " Y" + f(cy));
+        log("Spindle merkezi S = X" + f(cx) + " Y" + f(cy));
         etiketleriGuncelle();
+    }
+
+    /**
+     * Aktif iş ofsetini taban olarak saklar. Eğer aktif ofset, eklentinin en son
+     * uyguladığı değerle aynıysa (yani ofset zaten uygulanmışsa) eski taban korunur.
+     */
+    private void tabanOfsetiKaydet() {
+        Position m = makinePoz();
+        Position w = isPoz();
+        double wcoX = m.getX() - w.getX();
+        double wcoY = m.getY() - w.getY();
+
+        double uygX = prefs.getDouble("uygX", Double.NaN);
+        double uygY = prefs.getDouble("uygY", Double.NaN);
+        boolean zatenUygulanmis = !Double.isNaN(uygX)
+                && Math.abs(wcoX - uygX) < ESIT_TOL
+                && Math.abs(wcoY - uygY) < ESIT_TOL
+                && !Double.isNaN(prefs.getDouble("tabanX", Double.NaN));
+
+        if (zatenUygulanmis) {
+            log("Ofset daha önce uygulanmış; önceki taban korunuyor (X"
+                    + f(prefs.getDouble("tabanX", 0)) + " Y" + f(prefs.getDouble("tabanY", 0)) + ").");
+        } else {
+            prefs.putDouble("tabanX", wcoX);
+            prefs.putDouble("tabanY", wcoY);
+            log("Taban iş ofseti = X" + f(wcoX) + " Y" + f(wcoY));
+        }
     }
 
     /** Hızlı + yavaş iki aşamalı problama. Temas anındaki makine koordinatını döndürür. */
@@ -356,24 +380,33 @@ public final class OfsetKalibrasyonTopComponent extends TopComponent implements 
     //  ADIM 4 - OFSET UYGULA / Z
     // =====================================================================
     private void ofsetUygula() throws Exception {
-        double lx = prefs.getDouble("lx", Double.NaN);
-        double ly = prefs.getDouble("ly", Double.NaN);
+        if (tfRefX.getText().trim().isEmpty() || tfRefY.getText().trim().isEmpty()) {
+            throw new Exception("Önce 2. bölümde referans noktasını (X/Y) gir.");
+        }
+        double lx = sayi(tfRefX);
+        double ly = sayi(tfRefY);
         double sx = prefs.getDouble("sx", Double.NaN);
         double sy = prefs.getDouble("sy", Double.NaN);
-        double wcoX = prefs.getDouble("wcoX", Double.NaN);
-        double wcoY = prefs.getDouble("wcoY", Double.NaN);
-        if (Double.isNaN(lx) || Double.isNaN(sx) || Double.isNaN(wcoX)) {
-            throw new Exception("Önce lazer referansını ve delik problamayı yap.");
+        double tabanX = prefs.getDouble("tabanX", Double.NaN);
+        double tabanY = prefs.getDouble("tabanY", Double.NaN);
+        if (Double.isNaN(sx) || Double.isNaN(tabanX)) {
+            throw new Exception("Önce delik problamayı yap.");
         }
 
         double dx = sx - lx;
         double dy = sy - ly;
-        double yeniX = wcoX + dx;
-        double yeniY = wcoY + dy;
+        double yeniX = tabanX + dx;
+        double yeniY = tabanY + dy;
         int p = cbHedef.getSelectedIndex() + 1;
 
+        if (chSpindleModu.isSelected()) {
+            gonder("$32=0");
+        }
         gonder(String.format(Locale.US, "G10 L2 P%d X%s Y%s", p, f(yeniX), f(yeniY)));
         gonder(p == 1 ? "G54" : "G55");
+
+        prefs.putDouble("uygX", yeniX);
+        prefs.putDouble("uygY", yeniY);
 
         log("Kayma Δ = X" + f(dx) + " Y" + f(dy));
         log((p == 1 ? "G54" : "G55") + " yeni ofset = X" + f(yeniX) + " Y" + f(yeniY));
@@ -433,13 +466,21 @@ public final class OfsetKalibrasyonTopComponent extends TopComponent implements 
         return String.format(Locale.US, "%.4f", v);
     }
 
+    private static double guvenliSayi(String s) {
+        try {
+            return Double.parseDouble(s.trim().replace(',', '.'));
+        } catch (Exception ex) {
+            return Double.NaN;
+        }
+    }
+
     private void etiketleriGuncelle() {
-        double lx = prefs.getDouble("lx", Double.NaN), ly = prefs.getDouble("ly", Double.NaN);
+        double lx = guvenliSayi(prefs.get("refX", ""));
+        double ly = guvenliSayi(prefs.get("refY", ""));
         double sx = prefs.getDouble("sx", Double.NaN), sy = prefs.getDouble("sy", Double.NaN);
         SwingUtilities.invokeLater(() -> {
-            lblLazer.setText(Double.isNaN(lx) ? "L: -" : "L: X" + f(lx) + " Y" + f(ly));
             lblSpindle.setText(Double.isNaN(sx) ? "S: -" : "S: X" + f(sx) + " Y" + f(sy));
-            lblFark.setText(Double.isNaN(lx) || Double.isNaN(sx) ? "Δ: -"
+            lblFark.setText(Double.isNaN(lx) || Double.isNaN(ly) || Double.isNaN(sx) ? "Δ: -"
                     : "Δ: X" + f(sx - lx) + " Y" + f(sy - ly));
         });
     }
