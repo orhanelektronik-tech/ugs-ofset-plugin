@@ -1,17 +1,19 @@
 # UGS Ofset Kalibrasyonu Eklentisi
 
-UGS (Universal Gcode Sender) 2.1.26 için lazer ↔ spindle ofset kalibrasyon eklentisi.
+UGS (Universal Gcode Sender) 2.1.26 için spindle ofset kalibrasyon eklentisi.
 Lazer sökülüp spindle takıldığında oluşan, her seferinde farklı olan XY kaymasını
 tablaya sabitlenmiş metal blok üzerindeki **delik problama** (merkez bulma) ile düzeltir.
+Eklenti lazeri hiç açmaz; lazer tarafındaki referans noktası sabit bir değer olarak girilir.
 
 Makine: MKS DLC32 V2.1 (Grbl_ESP32) · TB2EOS
 
 ## Mantık
 
-- **L** = lazer noktası blok deliğinin merkezindeyken makine konumu
+- **L** = referans noktası: blok deliğinin merkezi, makine koordinatı (ayarlarda **sabit**, bir kez girilir)
 - **S** = spindle pimi deliğin merkezindeyken makine konumu (problanarak bulunur)
-- **WCO** = lazer referansı alınırken aktif iş koordinat ofseti (kartın G54 sıfırı)
-- **Yeni ofset = WCO + (S − L)** → `G10 L2 P1` (G54) veya `P2` (G55) ile yazılır
+- **TABAN** = problama anında aktif iş koordinat ofseti (lazer işindeki kartın G54 sıfırı)
+- **Yeni ofset = TABAN + (S − L)** → `G10 L2 P1` (G54) veya `P2` (G55) ile yazılır
+- Çift uygulama koruması: ofset uygulandıktan sonra tekrar problanırsa ilk taban kullanılır
 
 Delik problamada merkez = (a + b) / 2 olduğu için pim çapı sonuca girmez;
 pim çapı sadece ölçülen delik çapının doğrulanmasında kullanılır.
@@ -63,11 +65,12 @@ Panel: **Window → Plugins → Ofset Kalibrasyonu**
 
 ## Kullanım
 
+**Bir kerelik:** Referans noktasını gir. Lazer noktasını (UGS konsolundan düşük güçte) blok deliğinin
+merkezine getir, panelde **Mevcut konumu yaz**'a bas — ya da makine koordinatını X/Y kutularına elle yaz.
+
+**Her kartta:**
 1. **Home** ($H)
 2. Lazer takılıyken kartın G54 sıfırını ayarla, deseni yak.
-3. **İşaretçi AÇ** → lazer noktasını blok deliğinin merkezine getir → **Lazer referansını kaydet**
-4. Lazeri sök, spindle tak, pense ölçülü pim tak. Blok probe pinine, krokodil pense/gövdeye.
-5. Pimi deliğin içine, yüzeyin 2–3 mm altına indir → **Delik problamayı başlat**
-6. **Ofseti uygula** → pimi çıkar, matkabı tak → **Z probla** → delme kodunu gönder.
-
-> Lazer referansını kartın G54 sıfırını ayarladıktan **sonra** al.
+3. Lazeri sök, spindle tak, pense ölçülü pim tak. Blok probe pinine, krokodil pense/gövdeye.
+4. Pimi deliğin içine, yüzeyin 2–3 mm altına indir → **Delik problamayı başlat**
+5. **Ofseti uygula** (isteğe bağlı `$32=0` ile spindle moduna geçer) → pimi çıkar, matkabı tak → **Z probla** → delme kodunu gönder.
