@@ -1,26 +1,69 @@
 @echo off
-setlocal
+setlocal EnableDelayedExpansion
 rem ==========================================================
 rem  UGS Ofset Kalibrasyonu eklentisi - otomatik derleme
-rem  Gereken: JDK 17+  (Git ve Maven gerekmez)
+rem  Hicbir sey kurmana gerek yok:
+rem   - JDK yoksa tasinabilir Temurin JDK 17 bu klasore iner
+rem   - Git yoksa UGS kaynagi zip olarak iner
+rem   - Maven'i UGS'nin mvnw araci indirir
 rem  Cikti: bu klasore ugs-platform-plugin-ofset-*.nbm
 rem ==========================================================
 
 set "PROJE=%~dp0"
 set "SRC=%PROJE%ugs-src"
+set "JDKDIR=%PROJE%jdk"
 set "UGS_SURUM=2.1.26"
 set "ZIP=%PROJE%ugs-kaynak.zip"
 set "ZIP_URL=https://github.com/winder/Universal-G-Code-Sender/archive/refs/tags/v%UGS_SURUM%.zip"
+set "JDK_ZIP=%PROJE%jdk17.zip"
+set "JDK_URL=https://api.adoptium.net/v3/binary/latest/17/ga/windows/x64/jdk/hotspot/normal/eclipse"
 
 echo.
-echo === 1/5 Arac kontrolu ===
-where java >nul 2>&1
-if errorlevel 1 (
-    echo [HATA] Java bulunamadi. JDK 17 kur: https://adoptium.net
-    echo        Kurulumda "Set JAVA_HOME" secenegini isaretle.
+echo === 1/5 JDK (javac) araniyor ===
+set "BULUNAN="
+
+rem 1) JAVA_HOME bir JDK mi?
+if defined JAVA_HOME if exist "%JAVA_HOME%\bin\javac.exe" set "BULUNAN=%JAVA_HOME%"
+
+rem 2) Daha once bu klasore indirilmis JDK var mi?
+if not defined BULUNAN (
+    for /d %%D in ("%JDKDIR%\*") do (
+        if exist "%%~fD\bin\javac.exe" set "BULUNAN=%%~fD"
+    )
+)
+
+rem 3) PATH icinde javac var mi?
+if not defined BULUNAN (
+    for /f "delims=" %%J in ('where javac 2^>nul') do (
+        if not defined BULUNAN set "BULUNAN=%%~dpJ.."
+    )
+)
+
+rem 4) Yoksa tasinabilir JDK 17 indir
+if not defined BULUNAN (
+    echo JDK bulunamadi. Tasinabilir Temurin JDK 17 indiriliyor ^(yaklasik 190 MB^)...
+    powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%JDK_URL%' -OutFile '%JDK_ZIP%'"
+    if errorlevel 1 goto :hata
+    if not exist "%JDK_ZIP%" goto :hata
+    echo JDK aciliyor...
+    powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; Expand-Archive -Path '%JDK_ZIP%' -DestinationPath '%JDKDIR%' -Force"
+    if errorlevel 1 goto :hata
+    del /Q "%JDK_ZIP%"
+    for /d %%D in ("%JDKDIR%\*") do (
+        if exist "%%~fD\bin\javac.exe" set "BULUNAN=%%~fD"
+    )
+)
+
+if not defined BULUNAN (
+    echo [HATA] JDK hazirlanamadi.
     goto :hata
 )
-java -version
+
+for %%P in ("%BULUNAN%") do set "JAVA_HOME=%%~fP"
+set "PATH=%JAVA_HOME%\bin;%PATH%"
+echo Kullanilan JDK: %JAVA_HOME%
+"%JAVA_HOME%\bin\javac.exe" -version
+if errorlevel 1 goto :hata
 
 echo.
 echo === 2/5 UGS v%UGS_SURUM% kaynak kodu ===
@@ -37,7 +80,7 @@ if not errorlevel 1 (
     goto :kopyala
 )
 
-echo Git yok, zip olarak indiriliyor (yaklasik 60 MB)...
+echo Git yok, zip olarak indiriliyor ^(yaklasik 60 MB^)...
 powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%ZIP_URL%' -OutFile '%ZIP%'"
 if errorlevel 1 goto :hata
 if not exist "%ZIP%" goto :hata
