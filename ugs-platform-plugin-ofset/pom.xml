@@ -20,6 +20,19 @@
                 <groupId>org.apache.netbeans.utilities</groupId>
                 <artifactId>nbm-maven-plugin</artifactId>
                 <extensions>true</extensions>
+                <configuration>
+                    <!-- UGS modüllerine sürümsüz bağımlılık: kurulu UGS 2.1.26 ile uyumlu olsun -->
+                    <moduleDependencies>
+                        <dependency>
+                            <id>com.willwinder:ugs-platform-ugslib</id>
+                            <type>loose</type>
+                        </dependency>
+                        <dependency>
+                            <id>com.willwinder:ugs-platform-ugscore</id>
+                            <type>loose</type>
+                        </dependency>
+                    </moduleDependencies>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
