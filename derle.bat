@@ -108,9 +108,16 @@ if errorlevel 1 (
 )
 
 echo.
-echo === 4/5 Derleniyor (ilk seferde 10-20 dk surebilir) ===
+set "AM=-am"
+if exist "%USERPROFILE%\.m2\repository\com\willwinder\ugs-platform-ugscore" set "AM="
+if defined AM (
+    echo === 4/5 Ilk derleme: UGS parcalari + eklenti ^(10-20 dk surebilir^) ===
+) else (
+    echo === 4/5 Hizli derleme: sadece eklenti ===
+)
+if exist "%SRC%\ugs-platform\ugs-platform-plugin-ofset\target" rmdir /S /Q "%SRC%\ugs-platform\ugs-platform-plugin-ofset\target"
 pushd "%SRC%"
-call mvnw.cmd -B -DskipTests install -pl ugs-platform/ugs-platform-plugin-ofset -am
+call mvnw.cmd -B -DskipTests install -pl ugs-platform/ugs-platform-plugin-ofset %AM%
 if errorlevel 1 (
     popd
     goto :hata
